@@ -1,22 +1,199 @@
 ---
-title: "Practical Machine Learning Course Project"
+title: "Prediction Assignment Writeup"
 author: "David Riphagen"
-date: "April 14, 2016"
-output: html_document
+date: "April 9, 2016"
+output: pdf_document
 ---
+# Executive summary
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+# Download and load data
+```{r}
+setwd("~/Documents/rclass/ML/Project")
+```
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+Download training data
+```{r}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile ="pml-training.csv", method = "curl")
+```
+
+Load training data
+```{r}
+training <- read.csv("pml-training.csv")
+```
+
+Download test data
+```{r}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile ="pml-testing.csv", method = "curl")
+```
+
+Load test data
+```{r}
+testing <- read.csv("pml-testing.csv")
+```
+
+# Exploratory analysis of training data
+```{r}
+str(training)
+summary(training)
+```
+
+There are four sensors:
+
+1. Arm sensor
+2. Belt sensor
+3. Forearm sensor -> how is this variable different from arm sensor?
+4. Dumbbell sensor
+
+**More information about the data can be found here**
+
+# Cleaning up data
+First, I found the variables with more than 95% N/As in the training set and store them in the variables na_observations: 
 
 ```{r}
-summary(cars)
+na_variables <- sapply(training, function(x) mean(is.na(x))) > 0.95
 ```
 
-You can also embed plots, for example:
-
-```{r, echo=FALSE}
-plot(cars)
+Note that this is a logical vector with 160 observations, for each variable one.
+```{r}
+str(na_variables)
+head(na_variables)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+Then I remove these variables from both the training and the test set.
+```{r}
+training <- training[, na_variables==FALSE]
+testing  <- testing[, na_variables==FALSE]
+```
+
+This reduces the number of variables to 93.
+```{r}
+dim(training)
+```
+
+Next I remove near zero values with the nearZeroVar function in the caret package.
+```{r}
+library(caret)
+nearzerovalues <- nearZeroVar(training)
+```
+
+**I find 34 variable swith values near zero:** 
+
+Next I remove this variables from the training and testing data:
+```{r}
+training <- training[, -nearzerovalues]
+testing  <- testing[, -nearzerovalues]
+```
+This reduces the number of variables to 59.
+```{r}
+dim(training)
+```
+Finally, I remove identification variables from the training set as these do not relate to the classe variable I would like to predict. The identification variables are in the first five columns ad include things like user names and timestamps.
+```{r}
+training <- training[, -(1:5)]
+** not from testing set **
+testing  <- testing[, -(1:5)]
+```
+This leaves 54 variables in the dataset:
+```{r}
+dim(training)
+```
+# Selecting features
+I first take a look at the types of variables in the final training data set: the variables are either numeric or integer, except for the 'classe' variable I am trying to predict.
+```{r}
+lapply(training, class)
+```
+Next I look at the full correlation matrix for independent variables to see if there are any  that correlate highly with each other.
+```{r}
+cordata <- cor(training[,-54])
+library(corrplot)
+corrplot(cordata, order="hclust", addrect=2)
+```
+When I created a correlation matrix based on hierarchical clustering, there are some variables that seem highly (>0.8) correlated. It seems that measurements from the same type of instrument are highly correlated and that also totals are included, some examples:
+
+- Gyroscope metrics are highly correlated, whether measured from dumbbell or forearm
+- Acceleration is highly correlated with total acceleration
+- Measurements from the magnet arm are highly correlated in any direction (y-axix or z-axis)
+
+Therefore I decide to do a PCA analysis with 90% confidentiality and eliminate highly correlating variables before training the model. 
+
+```{r}
+pca_variables <- preProcess(training[,-54], method=c("center", "scale", "pca"), thresh=0.9)
+summary(pca_variables)
+
+trainingpca <- predict(pca_variables,training[,-54])
+```
+This leaves me with 19 variables in the training set:
+```{r}
+dim(trainingpca)
+```
+Do the same for testing set:
+```{r}
+testingpca <- predict(pca_variables,testing[,-54])
+```
+# Training
+I want to predict the 'classe' variable in the training set. The variables 'classe' has 5 outcomes:
+
+- A
+- B
+- C
+- D
+- E
+```{r}
+unique(training$classe)
+```
+This means I need to predict a classification as outcome, so predicting with (boosted) trees, random forest (set of trees) or linear discriminant analysis seems appropriate.
+
+Predicting with trees
+```{r}
+set.seed(12345)
+modFitDecTree <- train(classe ~ ., method = 'rpart', data = training)
+
+library(rattle)
+fancyRpartPlot(modFitDecTree$finalModel)
+
+modFitDecTree$finalModel
+```
+
+Predicting with random forests
+```{r}
+modFit_rf <- train(classe ~ ., method = 'rf', data = training)
+```
+
+Prediting with Boosted trees
+```{r} 
+modFit_gbm <- train(classe ~ .,
+                    method="gbm",
+                    data=training)
+```                    
+
+Predicting with linear discriminant analysis ("lda") model
+```{r}
+modFit_lda <- train(classe ~ .,
+                    method="lda",
+                    data=training)
+```
+# Testing
+Decision tree
+```{r}
+predictDecTree <- predict(modFitDecTree, newdata=training)
+confMatDecTree <- confusionMatrix(predictDecTree, training$classe)
+confMatDecTree
+```
+
+Boosted trees
+```{r}
+gbm_predictions <- predict(modFit_gbm, testing)
+confusionMatrix(testing$diagnosis, gbm_predictions)$overall['Accuracy']
+```
+
+Random forest
+```{r}
+rf_predictions <- predict(modFit_rf, testing)
+confusionMatrix(testing$diagnosis, rf_predictions)$overall['Accuracy']
+```
+
+Linear Discriminant Analysis
+```{r}
+lda_predictions <- predict(modFit_lda, testing)
+confusionMatrix(testing$diagnosis, lda_predictions)$overall['Accuracy']
+```
