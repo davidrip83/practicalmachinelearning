@@ -1,33 +1,40 @@
 ---
 title: "Prediction Assignment Writeup"
 author: "David Riphagen"
-date: "April 9, 2016"
-output: pdf_document
+date: "April 23, 2016"
+output: html_document
 ---
 # Executive summary
+This writeup predicts the manner in which subjects performed and exercise. The model I created has an expected out of sample error of [... ]
+Needs:
+- You should create a report describing how you built your model, 
+- How you used cross validation, 
+- what you think the expected out of sample error is, 
+- and why you made the choices you did. 
+- You will also use your prediction model to predict 20 different test cases.
 
 # Download and load data
 ```{r}
-setwd("~/Documents/rclass/ML/Project")
+setwd("~/Documents/rclass/ML/Project/practicalmachinelearning/practicalmachinelearning")
 ```
 
 Download training data
-```{r}
+```{r, cache=TRUE, eval = FALSE}
 download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile ="pml-training.csv", method = "curl")
 ```
 
 Load training data
-```{r}
+```{r, cache=TRUE}
 training <- read.csv("pml-training.csv")
 ```
 
 Download test data
-```{r}
+```{r, cache=TRUE, eval = FALSE}
 download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile ="pml-testing.csv", method = "curl")
 ```
 
 Load test data
-```{r}
+```{r, cache=TRUE}
 testing <- read.csv("pml-testing.csv")
 ```
 
@@ -76,7 +83,7 @@ library(caret)
 nearzerovalues <- nearZeroVar(training)
 ```
 
-**I find 34 variable swith values near zero:** 
+**I find 34 variables with values near zero:** 
 
 Next I remove this variables from the training and testing data:
 ```{r}
@@ -90,7 +97,6 @@ dim(training)
 Finally, I remove identification variables from the training set as these do not relate to the classe variable I would like to predict. The identification variables are in the first five columns ad include things like user names and timestamps.
 ```{r}
 training <- training[, -(1:5)]
-** not from testing set **
 testing  <- testing[, -(1:5)]
 ```
 This leaves 54 variables in the dataset:
@@ -156,14 +162,14 @@ modFitDecTree$finalModel
 
 Predicting with random forests
 ```{r}
-modFit_rf <- train(classe ~ ., method = 'rf', data = training)
+# modFit_rf <- train(classe ~ ., method = 'rf', data = training)
 ```
 
 Prediting with Boosted trees
 ```{r} 
-modFit_gbm <- train(classe ~ .,
-                    method="gbm",
-                    data=training)
+# modFit_gbm <- train(classe ~ .,
+#                    method="gbm",
+#                    data=training)
 ```                    
 
 Predicting with linear discriminant analysis ("lda") model
@@ -182,18 +188,18 @@ confMatDecTree
 
 Boosted trees
 ```{r}
-gbm_predictions <- predict(modFit_gbm, testing)
-confusionMatrix(testing$diagnosis, gbm_predictions)$overall['Accuracy']
+# gbm_predictions <- predict(modFit_gbm, testing)
+# confusionMatrix(testing$diagnosis, gbm_predictions)$overall['Accuracy']
 ```
 
 Random forest
 ```{r}
-rf_predictions <- predict(modFit_rf, testing)
-confusionMatrix(testing$diagnosis, rf_predictions)$overall['Accuracy']
+# rf_predictions <- predict(modFit_rf, testing)
+# confusionMatrix(testing$diagnosis, rf_predictions)$overall['Accuracy']
 ```
 
 Linear Discriminant Analysis
 ```{r}
 lda_predictions <- predict(modFit_lda, testing)
-confusionMatrix(testing$diagnosis, lda_predictions)$overall['Accuracy']
+# confusionMatrix(testing$diagnosis, lda_predictions)$overall['Accuracy']
 ```
