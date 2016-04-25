@@ -5,16 +5,10 @@ date: "April 23, 2016"
 output: html_document
 ---
 # Executive summary
-This writeup predicts the manner in which subjects performed and exercise. The model I created has an expected out of sample error of [... ]
-Needs:
-- You should create a report describing how you built your model, 
-- How you used cross validation, 
-- what you think the expected out of sample error is, 
-- and why you made the choices you did. 
-- You will also use your prediction model to predict 20 different test cases.
+This writeup predicts the manner in which subjects performed and exercise. The model I created is based on a random forest and has an expected out of sample error of ~0.2% (1-accuracy). I also considered a decision tree (accuracy ~49% or similar to coin-flip), boosted trees (accuracy ~0.99%) and lda (accuracy ~64%) models and cross-validated all 4 models on a subset of the training data. Finally, I generated the file "predictions.txt" to predict the 20 different test cases.
 
 # Download and load data
-```{r}
+```{r echo = FALSE}
 setwd("~/Documents/rclass/ML/Project/practicalmachinelearning/practicalmachinelearning")
 ```
 
@@ -38,8 +32,10 @@ Load test data
 testing <- read.csv("pml-testing.csv")
 ```
 
+More information on the data collection effort can be found here: http://groupware.les.inf.puc-rio.br/har
+
 # Exploratory analysis of training data
-```{r}
+```{r, echo = FALSE}
 str(training)
 summary(training)
 ```
@@ -51,7 +47,7 @@ There are four sensors:
 3. Forearm sensor -> how is this variable different from arm sensor?
 4. Dumbbell sensor
 
-**More information about the data can be found here**
+More information about the data can be found in the presentation here: http://groupware.les.inf.puc-rio.br/public/2012.SBIA.Ugulino.WearableComputing-Presentation.pdf
 
 # Cleaning up data
 First, I found the variables with more than 95% N/As in the training set and store them in the variables na_observations: 
@@ -63,7 +59,6 @@ na_variables <- sapply(training, function(x) mean(is.na(x))) > 0.95
 Note that this is a logical vector with 160 observations, for each variable one.
 ```{r}
 str(na_variables)
-head(na_variables)
 ```
 
 Then I remove these variables from both the training and the test set.
@@ -78,14 +73,13 @@ dim(training)
 ```
 
 Next I remove near zero values with the nearZeroVar function in the caret package.
-```{r}
+```{r, echo = FALSE}
 library(caret)
 nearzerovalues <- nearZeroVar(training)
 ```
 
-**I find 34 variables with values near zero:** 
-
-Next I remove this variables from the training and testing data:
+I find 34 variables with values near zero.
+Next I remove these variables from the training and testing data:
 ```{r}
 training <- training[, -nearzerovalues]
 testing  <- testing[, -nearzerovalues]
@@ -104,8 +98,9 @@ This leaves 54 variables in the dataset:
 dim(training)
 ```
 # Selecting features
+## Correlation
 I first take a look at the types of variables in the final training data set: the variables are either numeric or integer, except for the 'classe' variable I am trying to predict.
-```{r}
+```{r, echo = FALSE}
 lapply(training, class)
 ```
 Next I look at the full correlation matrix for independent variables to see if there are any  that correlate highly with each other.
@@ -114,92 +109,122 @@ cordata <- cor(training[,-54])
 library(corrplot)
 corrplot(cordata, order="hclust", addrect=2)
 ```
-When I created a correlation matrix based on hierarchical clustering, there are some variables that seem highly (>0.8) correlated. It seems that measurements from the same type of instrument are highly correlated and that also totals are included, some examples:
+
+When I created a correlation matrix based on hierarchical clustering, there are some variables that seem highly (>0.8, dark-blue and dark-red clusters) correlated. It seems that measurements from the same type of instrument are highly correlated and that also totals are included, some examples:
 
 - Gyroscope metrics are highly correlated, whether measured from dumbbell or forearm
 - Acceleration is highly correlated with total acceleration
 - Measurements from the magnet arm are highly correlated in any direction (y-axix or z-axis)
 
-Therefore I decide to do a PCA analysis with 90% confidentiality and eliminate highly correlating variables before training the model. 
+## Cross-validation
+```{r}
+set.seed(1234)
+inTrain <- createDataPartition(y=training$classe,
+                               p=0.7, 
+                               list=FALSE)
+training_1 <- training[inTrain,]
+training_2 <- training[-inTrain,]
+dim(training_1); dim(training_2)
+```
 
-```{r}
-pca_variables <- preProcess(training[,-54], method=c("center", "scale", "pca"), thresh=0.9)
-summary(pca_variables)
-
-trainingpca <- predict(pca_variables,training[,-54])
-```
-This leaves me with 19 variables in the training set:
-```{r}
-dim(trainingpca)
-```
-Do the same for testing set:
-```{r}
-testingpca <- predict(pca_variables,testing[,-54])
-```
 # Training
 I want to predict the 'classe' variable in the training set. The variables 'classe' has 5 outcomes:
 
-- A
-- B
-- C
-- D
-- E
+- A: Sitting 
+- B: Sitting down 
+- C: Standing 
+- D: Standing Up 
+- E: Walking
 ```{r}
 unique(training$classe)
 ```
 This means I need to predict a classification as outcome, so predicting with (boosted) trees, random forest (set of trees) or linear discriminant analysis seems appropriate.
 
-Predicting with trees
+## Modeling
+Modeling with trees
 ```{r}
 set.seed(12345)
-modFitDecTree <- train(classe ~ ., method = 'rpart', data = training)
+modFitDecTree <- train(classe ~ ., method = 'rpart', data = training_1)
 
 library(rattle)
 fancyRpartPlot(modFitDecTree$finalModel)
-
-modFitDecTree$finalModel
 ```
 
-Predicting with random forests
-```{r}
-# modFit_rf <- train(classe ~ ., method = 'rf', data = training)
+Modeling with random forests
+```{r, cache = TRUE}
+modFit_rf <- train(classe ~ ., method = 'rf', data = training_1)
 ```
 
-Prediting with Boosted trees
-```{r} 
-# modFit_gbm <- train(classe ~ .,
-#                    method="gbm",
-#                    data=training)
+Modeling with Boosted trees
+```{r, cache = TRUE} 
+modFit_gbm <- train(classe ~ .,
+                    method="gbm",
+                    data=training_1)
 ```                    
 
-Predicting with linear discriminant analysis ("lda") model
+Modeling with linear discriminant analysis ("lda") model
 ```{r}
 modFit_lda <- train(classe ~ .,
                     method="lda",
                     data=training)
 ```
 # Testing
+## Cross-validation
 Decision tree
 ```{r}
-predictDecTree <- predict(modFitDecTree, newdata=training)
-confMatDecTree <- confusionMatrix(predictDecTree, training$classe)
+predictDecTree <- predict(modFitDecTree, newdata=training_2)
+confMatDecTree <- confusionMatrix(predictDecTree, training_2$classe)
 confMatDecTree
+```
+Accuracy is
+```{r}
+confMatDecTree$overall['Accuracy']
 ```
 
 Boosted trees
 ```{r}
-# gbm_predictions <- predict(modFit_gbm, testing)
-# confusionMatrix(testing$diagnosis, gbm_predictions)$overall['Accuracy']
+gbm_predictions <- predict(modFit_gbm, training_2)
+confusionMatrix(gbm_predictions, training_2$classe)
+```
+Accuracy is
+```{r}
+confusionMatrix(gbm_predictions, training_2$classe)$overall['Accuracy']
 ```
 
 Random forest
 ```{r}
-# rf_predictions <- predict(modFit_rf, testing)
-# confusionMatrix(testing$diagnosis, rf_predictions)$overall['Accuracy']
+rf_predictions <- predict(modFit_rf, training_2)
+confusionMatrix(rf_predictions, training_2$classe)
+```
+Accuracy is
+```{r}
+confusionMatrix(rf_predictions, training_2$classe)$overall['Accuracy']
 ```
 
 Linear Discriminant Analysis
 ```{r}
-lda_predictions <- predict(modFit_lda, testing)
-# confusionMatrix(testing$diagnosis, lda_predictions)$overall['Accuracy']
+lda_predictions <- predict(modFit_lda, training_2)
+confusionMatrix(lda_predictions, training_2$classe)
 ```
+Accuracy is
+```{r}
+confusionMatrix(lda_predictions, training_2$classe)$overall['Accuracy']
+```
+
+## Predicting the testing set
+The top performing models are gbm (accuracy: 0.9874257) and random forests (accuracy: 0.9979609). Therefore I decide to use the random forest model to predict the testing set.
+```{r}
+overall_predictions <- predict(modFit_rf, testing)
+```
+
+And I write the data to a file:
+```{r}
+write.table(overall_predictions,
+            "predictions.txt", 
+            sep="\t",
+            quote=FALSE,
+            row.names=c("problem_id_1", "problem_id_2", "problem_id_3", "problem_id_4", "problem_id_5", "problem_id_6", "problem_id_7", "problem_id_8", "problem_id_9", "problem_id_10", "problem_id_11", "problem_id_12", "problem_id_13", "problem_id_14", "problem_id_15", "problem_id_16", "problem_id_17", "problem_id_18", "problem_id_19", "problem_id_20"),
+            col.names=c("predicted_class")
+            )
+```
+
