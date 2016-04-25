@@ -35,7 +35,7 @@ testing <- read.csv("pml-testing.csv")
 More information on the data collection effort can be found here: http://groupware.les.inf.puc-rio.br/har
 
 # Exploratory analysis of training data
-```{r, echo = FALSE}
+```{r, results = 'hide'}
 str(training)
 summary(training)
 ```
@@ -100,7 +100,7 @@ dim(training)
 # Selecting features
 ## Correlation
 I first take a look at the types of variables in the final training data set: the variables are either numeric or integer, except for the 'classe' variable I am trying to predict.
-```{r, echo = FALSE}
+```{r, results = 'hide'}
 lapply(training, class)
 ```
 Next I look at the full correlation matrix for independent variables to see if there are any  that correlate highly with each other.
@@ -156,7 +156,7 @@ modFit_rf <- train(classe ~ ., method = 'rf', data = training_1)
 ```
 
 Modeling with Boosted trees
-```{r, cache = TRUE} 
+```{r, cache = TRUE, results = 'hide'} 
 modFit_gbm <- train(classe ~ .,
                     method="gbm",
                     data=training_1)
